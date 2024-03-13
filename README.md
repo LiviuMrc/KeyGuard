@@ -10,13 +10,15 @@ Installation
 
 Clone the repository:
 
-bash
+```bash
 
 git clone https://github.com/LiviuMrc/KeyGuard.git
+```
 
 Navigate to the project directory:
 
-bash
+```bash
 
 cd KeyGuard
+```
 
