@@ -38,8 +38,52 @@ def create_vault_key():
 
 
 
-def enter_vault():
-    print("a")
+
+def verify_password(iterations=10000, key_length=32):
+
+    while True:
+
+        name = input("What is your username ?\n")
+
+        username_pc = getpass.getuser()
+        desktop_path = os.path.join("/Users", username_pc, "Desktop","KeyGuard Test")
+        file_path = os.path.join(desktop_path, f"{name}'s Vault.txt")
+
+        if os.path.exists(file_path):
+            with open(file_path) as file:
+                stored_salt = file.readline().strip()
+                stored_hash = file.readline().strip()
+                stored_salt = bytes.fromhex(stored_salt)
+                stored_hash = bytes.fromhex(stored_hash)
+
+            break
+        else:
+            print("This user's Vault does not exist, please try again:\n")
+
+
+        break
+
+    masterpass = input("Masterpass:")
+    masterpass = masterpass.encode()
+    user = name.encode()
+
+    key = user + masterpass
+
+    input_hash = pbkdf2_hmac('sha256',key,stored_salt,iterations,dklen=key_length)
+
+    if input_hash == stored_hash:
+        print("Authenticated")
+    else:
+        print("Fail")
+
+
+
+
+    
+
+    
+            
+
 
 
 
@@ -47,35 +91,35 @@ def enter_vault():
 
 def main():
     while True:
-        while True:
-           print("\nMeniu:")
-           print("1. Creaza vault")
-           print("2. Enter Vault")
-           print("5. Exit")
-           
+        print("\nMeniu:")
+        print("1. Creaza vault")
+        print("2. Enter Vault")
+        print("5. Exit")
+
+        optiune = input("Selectati optiunea: ")
+
+        if optiune == "1":
+            create_vault_key()
+        elif optiune == "2":
+            verify_password()
+        
+            
 
 
-           optiune = input("Selectati optiunea: ")
 
 
-           if optiune == "1":
-               create_vault_key()
-           
-               
 
 
-           elif optiune == "5":
-               print("La revedere!")
-               return
-           else:
-               print("Optiune invalida. Va rugam selectati din nou.")
+        elif optiune == "5":
+            print("La revedere!")
+            return
+        else:
+            print("Optiune invalida. Va rugam selectati din nou.")
 
+        continua = input("\nEnter 1 to go Back\n")
+        if continua != "1":
+            break
 
-           continua = input("\nEnter 1 to go Back\n")
-           if continua != "1":
-               break
-
-    create_vault_key()
 
 if __name__ == "__main__":
    main()
