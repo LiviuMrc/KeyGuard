@@ -1,5 +1,5 @@
 # KeyGuard
-This is a simple password manager implemented made un Python. It allows users to store and retrieve passwords securely.
+This is a simple password manager made in Python. It allows users to store and retrieve passwords securely.
 
 
 Installation
