@@ -1,10 +1,6 @@
 # KeyGuard
-This is a simple password manager implemented in Python, using PBKDF2 for secure password hashing. It allows users to store and retrieve passwords securely.
-Features
+This is a simple password manager implemented made un Python. It allows users to store and retrieve passwords securely.
 
-Store passwords securely using PBKDF2 hashing
-Retrieve stored passwords
-Simple and easy-to-use command-line interface
 
 Installation
 
