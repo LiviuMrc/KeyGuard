@@ -18,3 +18,10 @@ Navigate to the project directory:
 cd KeyGuard
 ```
 
+Execute:
+```bash
+
+chmod +x KeyGuard
+./KeyGuard
+```
+
