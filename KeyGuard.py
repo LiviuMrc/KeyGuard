@@ -1,3 +1,4 @@
+import pyotp
 from hashlib import pbkdf2_hmac
 import os
 import getpass
@@ -5,6 +6,7 @@ import binascii
 import json
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
+import qrcode
 
 
 def create_vault_key():
@@ -21,30 +23,66 @@ def create_vault_key():
 
     derived_key = pbkdf2_hmac('sha256', key, salt, iterations, dklen=key_length)
 
-    auth_data = {
-        "salt": salt.hex(),
-        "hash": derived_key.hex()
-    }
+    totp_secret = pyotp.random_base32()
 
-    username_pc = getpass.getuser()
-    desktop_path = os.path.join("/Users", username_pc, "Desktop", "KeyGuard Test")
-    auth_file_path = os.path.join(desktop_path, f"{username}_auth.json")
-    data_file_path = os.path.join(desktop_path, f"{username}_data.json")
+    totp_uri = pyotp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="KeyGuard")
 
-    os.makedirs(desktop_path, exist_ok=True)
-    with open(auth_file_path, "w") as file:
-        json.dump(auth_data, file, indent=4)
+    # Generate the QR code
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(totp_uri)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
 
-    with open(data_file_path, "w") as file:
-        file.write("")  # Create an empty file
+    # Display the QR code to the user
+    img.show()
 
-    print("Vault Created.")
+    totp = pyotp.TOTP(totp_secret)
+    user_totp_token = input("Enter the TOTP token to confirm: ")
+    if totp.verify(user_totp_token):
+        print("TOTP confirmation successful!")
 
-    del username, masterpass, masterpass_bin, username_bin,key,iterations,salt,key_length,derived_key,auth_data,username_pc,desktop_path,auth_file_path,data_file_path,file
+        img.close()
+        # Encrypt the TOTP secret key
+        cipher = AES.new(derived_key, AES.MODE_CBC)
+        iv = cipher.iv
+        encrypted_totp_secret = cipher.encrypt(pad(totp_secret.encode(), AES.block_size))
+
+        # Store the encrypted TOTP secret and other authentication data
+        auth_data = {
+            "salt": salt.hex(),
+            "hash": derived_key.hex(),
+            "totp": {
+                "iv": iv.hex(),
+                "data": binascii.hexlify(encrypted_totp_secret).decode()
+            }
+        }
+
+        username_pc = getpass.getuser()
+        desktop_path = os.path.join("/Users", username_pc, "Desktop", "KeyGuard Test")
+        auth_file_path = os.path.join(desktop_path, f"{username}_auth.json")
+        data_file_path = os.path.join(desktop_path, f"{username}_data.json")
+
+        with open(data_file_path, "w") as file:
+            file.write("")  # Create an empty file
+
+        os.makedirs(desktop_path, exist_ok=True)
+        with open(auth_file_path, "w") as file:
+            json.dump(auth_data, file, indent=4)
+
+        print("Vault Created.")
+        del username, masterpass, masterpass_bin, username_bin,key,iterations,salt,key_length,derived_key,auth_data,username_pc,desktop_path,auth_file_path,file,img
+    else:
+            print("Invalid TOTP token. Please try again.")
+            del username, masterpass, masterpass_bin, username_bin,key,iterations,salt,key_length,derived_key,username_pc,desktop_path,auth_file_path,file,img
 
 def authenticate():
     name = input("What is your username?\n")
-    masterpass = input("Masterpass:\n")
+    masterpass = getpass.getpass("Master password:\n")
     masterpass = masterpass.encode()
     user = name.encode()
 
@@ -63,35 +101,54 @@ def authenticate():
         input_hash = pbkdf2_hmac('sha256', key, stored_salt, 10000, dklen=32)
 
         if input_hash == stored_hash:
-            print("\nAuthenticated")
-            while True:
-                print("\nMenu:")
-                print("1. Add Entry")
-                print("2. Search")
-                print("3. Show All")
-                print("4. Delete")
-                print("5. Exit")
+            print("\nTOTP Verification:")
 
-                option = input("Select an option: ")
+            # Decrypt and verify the TOTP token
+            totp_data = auth_data["totp"]
+            iv = bytes.fromhex(totp_data["iv"])
+            encrypted_totp_secret = binascii.unhexlify(totp_data["data"])
+            cipher = AES.new(input_hash, AES.MODE_CBC, iv=iv)
+            decrypted_totp_secret = unpad(cipher.decrypt(encrypted_totp_secret), AES.block_size).decode()
 
-                if option == "1":
-                    add_entry(data_file_path, key)
-                elif option == "2":
-                    search_entry(data_file_path, key)
-                elif option == "3":
-                    show_all_services(data_file_path, key)
-                elif option == "4":
-                    delete_entry(data_file_path)
-                elif option == "5":
-                    print("Goodbye!")
-                    return
-                else:
-                    print("Invalid option. Please try again.")
+            totp = pyotp.TOTP(decrypted_totp_secret)
+            user_totp_token = input("Enter the TOTP token: ")
+            if totp.verify(user_totp_token):
+                print("TOTP verification successful!")
+                
+                # Proceed with the rest of your authentication process...
+                while True:
+                    print("\nMenu:")
+                    print("1. Add Entry")
+                    print("2. Search")
+                    print("3. Show All")
+                    print("4. Delete")
+                    print("5. Exit")
+
+                    option = input("Select an option: ")
+
+                    if option == "1":
+                        add_entry(data_file_path, input_hash)
+                    elif option == "2":
+                        search_entry(data_file_path, input_hash)
+                    elif option == "3":
+                        show_all_services(data_file_path, input_hash)
+                    elif option == "4":
+                        delete_entry(data_file_path)
+                    elif option == "5":
+                        print("Goodbye!")
+                        return
+                    else:
+                        print("Invalid option. Please try again.")
+            else:
+                print("Invalid TOTP token.")
+                return False
         else:
             print("Authentication failed.")
+            return False
     else:
         print("This user's Vault does not exist, please try again.")
-
+        return False
+    
 def add_entry(data_file_path, key):
     service = input("Service: ")
     uname = input("Username: ")
