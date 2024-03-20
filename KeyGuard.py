@@ -10,7 +10,21 @@ import qrcode
 
 
 def create_vault_key():
-    username = input("Enter username:\n")
+    while True:
+        username = input("Enter username:\n")
+        if username == "1":
+            print("Vault creation canceled.")
+            return
+        
+        username_pc = getpass.getuser()
+        desktop_path = os.path.join("/Users", username_pc, "Desktop", "KeyGuard Test")
+        auth_file_path = os.path.join(desktop_path, f"{username}_auth.json")
+        
+        if os.path.exists(auth_file_path):
+            print("A vault with this username already exists. Please choose a different username or type 1 to exit.")
+        else:
+            break
+
     masterpass = input("Enter the masterpassword:\n")
 
     masterpass_bin = masterpass.encode()
@@ -52,14 +66,14 @@ def create_vault_key():
         iv = cipher.iv
         encrypted_totp_secret = cipher.encrypt(pad(totp_secret.encode(), AES.block_size))
 
-        # Store the encrypted TOTP secret and other authentication data
+        # Store the encrypted TOTP secret, security question, and encrypted security answer
         auth_data = {
             "salt": salt.hex(),
             "hash": derived_key.hex(),
             "totp": {
                 "iv": iv.hex(),
                 "data": binascii.hexlify(encrypted_totp_secret).decode()
-            }
+            },
         }
 
         username_pc = getpass.getuser()
@@ -75,10 +89,16 @@ def create_vault_key():
             json.dump(auth_data, file, indent=4)
 
         print("Vault Created.")
-        del username, masterpass, masterpass_bin, username_bin,key,iterations,salt,key_length,derived_key,auth_data,username_pc,desktop_path,auth_file_path,file,img
     else:
-            print("Invalid TOTP token. Please try again.")
-            del username, masterpass, masterpass_bin, username_bin,key,iterations,salt,key_length,derived_key,username_pc,desktop_path,auth_file_path,file,img
+        print("Invalid TOTP token. Please try again.")
+
+    del username, masterpass, masterpass_bin, username_bin,key,iterations,salt,key_length,derived_key,auth_data,username_pc,desktop_path,auth_file_path,file,img
+
+def encrypt_data(key, data):
+    cipher = AES.new(key, AES.MODE_CBC)
+    iv = cipher.iv
+    encrypted_data = cipher.encrypt(pad(data, AES.block_size))
+    return {"iv": iv.hex(), "data": binascii.hexlify(encrypted_data).decode()}
 
 def authenticate():
     name = input("What is your username?\n")
@@ -119,22 +139,25 @@ def authenticate():
                 while True:
                     print("\nMenu:")
                     print("1. Add Entry")
-                    print("2. Search")
-                    print("3. Show All")
-                    print("4. Delete")
-                    print("5. Exit")
+                    print("2. Edit")
+                    print("3. Search")
+                    print("4. Show All")
+                    print("5. Delete")
+                    print("6. Exit")
 
                     option = input("Select an option: ")
 
                     if option == "1":
                         add_entry(data_file_path, input_hash)
                     elif option == "2":
-                        search_entry(data_file_path, input_hash)
+                        add_entry(data_file_path, input_hash)
                     elif option == "3":
-                        show_all_services(data_file_path, input_hash)
+                        search_entry(data_file_path, input_hash)
                     elif option == "4":
-                        delete_entry(data_file_path)
+                        show_all_services(data_file_path, input_hash)
                     elif option == "5":
+                        delete_entry(data_file_path)
+                    elif option == "6":
                         print("Goodbye!")
                         return
                     else:
@@ -247,6 +270,47 @@ def delete_entry(data_file_path):
         else:
             print("No entry found for the specified service.")
             del service_to_delete
+    
+def edit_entry(data_file_path, key):
+    service_to_edit = input("Enter the service name to edit: ")
+    with open(data_file_path) as file:
+        content = file.read().strip()
+        if not content:
+            print("No entries found.")
+            return
+        data = json.loads(content)
+        if service_to_edit in data:
+            entry = data[service_to_edit]
+            salt = bytes.fromhex(entry["salt"])
+            iv = bytes.fromhex(entry["iv"])
+            encrypted_data = binascii.unhexlify(entry["data"])
+
+            derived_key = pbkdf2_hmac('sha256', key, salt, 10000, dklen=32)
+            cipher = AES.new(derived_key, AES.MODE_CBC, iv=iv)
+            decrypted_data = unpad(cipher.decrypt(encrypted_data), AES.block_size).decode()
+            uname, passwd = decrypted_data.split(":")
+
+            print(f"Editing Service: {service_to_edit}")
+            new_uname = input(f"New Username ({uname}): ") or uname
+            new_passwd = input(f"New Password ({passwd}): ") or passwd
+
+            new_data = f"{new_uname}:{new_passwd}".encode()
+            encrypted_new_data = cipher.encrypt(pad(new_data, AES.block_size))
+
+            # Update the entry
+            entry["data"] = binascii.hexlify(encrypted_new_data).decode()
+
+            with open(data_file_path, "w") as file:
+                json.dump(data, file, indent=4)
+
+            print("Entry edited successfully.")
+            del derived_key, decrypted_data, uname, passwd, service_to_edit, new_uname, new_passwd, new_data, encrypted_new_data
+        else:
+            print("No entry found for the specified service.")
+            del service_to_edit
+
+
+
 
 def main():
     while True:
@@ -266,9 +330,6 @@ def main():
             return
         else:
             print("Invalid option. Please try again.")
-
-        continue_option = input("\nEnter 1 to go back to the main menu\n")
-        if continue_option != "1":
             break
 
 if __name__ == "__main__":
